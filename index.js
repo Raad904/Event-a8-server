@@ -2,12 +2,17 @@ import express from 'express'
 import cors from 'cors';
 import 'dotenv/config'
 import { MongoClient, ObjectId } from 'mongodb';
+import { fromNodeHeaders } from "better-auth/node";
+import { auth } from "../events-platform-web/src/lib/auth.js";
 
 
 
 const app = express();
 app.use(express.json());
-app.use(cors());
+app.use(cors({
+    origin: "http://localhost:3000",
+    credentials: true
+}));
 const PORT = process.env.PORT || 5000;
 
 
@@ -29,32 +34,73 @@ const mongoClint = await connectToMongoDB()
 const db = mongoClint.db("Event")
 const destinationCollection = db.collection("destination")
 
+const verifyUser = async (req, res, next) => {
+    try {
+        const session = await auth.api.getSession({
+            headers: fromNodeHeaders(req.headers),
+        });
+
+        if (!session?.user) {
+            return res.status(401).json({
+                message: "Please login first",
+            });
+        }
+
+        req.user = session.user;
+        next();
+
+    } catch (error) {
+        console.error(error);
+
+        res.status(401).json({
+            message: "Unauthorized",
+        });
+    }
+};
 
 
-app.post('/Create-event', async (req, res) => {
-    const data = req.body
+app.post('/Create-event', verifyUser, async (req, res) => {
+    try {
+        const data = {
+            ...req.body,
 
-    const result = await destinationCollection.insertOne(data)
+            // Logged-in user ID
+            createdBy: req.user.id,
 
+            organizerEmail: req.user.email,
 
-    console.log(result)
-    res.json(result)
-})
+            createdAt: new Date(),
+        };
 
-app.delete("/my-event/:id", async (req, res) => {
+        const result = await destinationCollection.insertOne(data);
+
+        res.status(201).json({
+            message: "Event created successfully",
+            insertedId: result.insertedId,
+        });
+
+    } catch (error) {
+        console.error(error);
+
+        res.status(500).json({
+            message: "Failed to create event",
+        });
+    }
+});
+
+app.delete("/my-event/:id", verifyUser, async (req, res) => {
     try {
         const { id } = req.params;
 
-        const { ObjectId } = await import("mongodb");
 
         if (!ObjectId.isValid(id)) {
             return res.status(400).json({
                 message: "Invalid event ID",
             });
         }
-
         const result = await destinationCollection.deleteOne({
             _id: new ObjectId(id),
+            createdBy: req.user.id,
         });
 
         if (result.deletedCount === 0) {
@@ -75,24 +121,77 @@ app.delete("/my-event/:id", async (req, res) => {
     }
 });
 
-app.get('/my-event', async (req, res) => {
-    const result = await destinationCollection.find().toArray()
-    res.send(result)
-})
+app.get('/my-event', verifyUser, async (req, res) => {
+    try {
+        const result = await destinationCollection
+            .find({
+                createdBy: req.user.id
+            })
+            .toArray();
 
-app.get('/my-event/:id',async(req,res)=>{
-    const {id}= req.params
-    
-    
-    const result = await destinationCollection.findOne({_id: new ObjectId(id)})
-    res.send(result)
-})
+        res.send(result);
+
+    } catch (error) {
+        res.status(500).json({
+            message: "Failed to fetch events"
+        });
+    }
+});
+
+// Get All Public Events
+app.get('/events', async (req, res) => {
+    try {
+        const result = await destinationCollection
+            .find({})
+            .toArray();
+
+        res.status(200).json(result);
+
+    } catch (error) {
+        console.error("Fetch events error:", error);
+
+        res.status(500).json({
+            message: "Failed to fetch events"
+        });
+    }
+});
 
 
-app.patch('/my-event/:id', async (req, res) => {
+app.get('/my-event/:id', verifyUser, async (req, res) => {
     try {
         const { id } = req.params;
-        const updatedData = req.body;
+
+        if (!ObjectId.isValid(id)) {
+            return res.status(400).json({
+                message: "Invalid event ID"
+            });
+        }
+
+        const result = await destinationCollection.findOne({
+            _id: new ObjectId(id),
+            createdBy: req.user.id
+        });
+
+        if (!result) {
+            return res.status(404).json({
+                message: "Event not found"
+            });
+        }
+
+        res.status(200).json(result);
+
+    } catch (error) {
+        res.status(500).json({
+            message: "Failed to fetch event"
+        });
+    }
+});
+
+
+app.patch('/my-event/:id', verifyUser, async (req, res) => {
+    try {
+        const { id } = req.params;
+       const { createdBy, _id, ...updatedData } = req.body;
 
         if (!ObjectId.isValid(id)) {
             return res.status(400).json({
@@ -101,7 +200,10 @@ app.patch('/my-event/:id', async (req, res) => {
         }
 
         const result = await destinationCollection.updateOne(
-            { _id: new ObjectId(id) },
+            {
+                _id: new ObjectId(id),
+                createdBy: req.user.id
+            },
             { $set: updatedData }
         );
 
