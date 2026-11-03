@@ -175,6 +175,4 @@ app.get('/', (req, res) => {
 });
 
 
-// IMPORTANT: Vercel Serverless
-// Do not use app.listen()
 export default app;
