@@ -217,6 +217,15 @@ app.get('/Upcoming-Events', async (req, res) => {
     const result = await destinationCollection.find().toArray()
     res.send(result)
 })
+app.get('/RecentEvents', async (req, res) => {
+    const result = await destinationCollection.find().toArray()
+    res.send(result)
+})
+
+app.get('/GallerySection', async (req, res) => {
+    const result = await destinationCollection.find().toArray()
+    res.send(result)
+})
 
 app.get('/my-event/:id',async(req,res)=>{
     const {id}= req.params
