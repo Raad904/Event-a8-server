@@ -32,21 +32,6 @@ const destinationCollection= db.collection("destination")
 const joinedCollection = db.collection("joined")
 
 
-const verifyApi = (req, res, next)=>{
-    const authHeader = req.headers.authorization;
-    console.log(authHeader);
-
-    if(authHeader!== "user logged in"){
-        return res.status(401).send({msg: "Unauthorized!"});
-
-    }
-    
-    console.log("I am");
-
-    next()
-    
-}
-
 
 
 app.post('/Create-event', async (req, res) => {
@@ -243,7 +228,7 @@ app.get('/GallerySection', async (req, res) => {
     res.send(result)
 })
 
-app.get('/my-event/:id',verifyApi, async(req,res)=>{
+app.get('/my-event/:id', async(req,res)=>{
     const {id}= req.params
 
     const result = await destinationCollection.findOne({_id: new ObjectId(id)})
